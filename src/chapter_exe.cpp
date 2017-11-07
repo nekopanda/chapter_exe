@@ -53,11 +53,11 @@ int _tmain(int argc, _TCHAR* argv[])
 	// メモリリークチェック
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 
-	printf(_T("chapter.auf pre loading program.\n"));
-	printf(_T("usage:\n"));
-	printf(_T("\tchapter_exe.exe -v input_avs -o output_txt\n"));
-	printf(_T("params:\n\t-v 入力画像ファイル\n\t-a 入力音声ファイル（省略時は動画と同じファイル）\n\t-m 無音判定閾値（1～2^15)\n\t-s 最低無音フレーム数\n\t-b 無音シーン検索間隔数\n"));
-	printf(_T("\t-e 無音前後検索拡張フレーム数\n"));
+	//printf(_T("chapter.auf pre loading program.\n"));
+	//printf(_T("usage:\n"));
+	//printf(_T("\tchapter_exe.exe -v input_avs -o output_txt\n"));
+	//printf(_T("params:\n\t-v 入力画像ファイル\n\t-a 入力音声ファイル（省略時は動画と同じファイル）\n\t-m 無音判定閾値（1～2^15)\n\t-s 最低無音フレーム数\n\t-b 無音シーン検索間隔数\n"));
+	//printf(_T("\t-e 無音前後検索拡張フレーム数\n"));
 
 	TCHAR *avsv = NULL;
 	TCHAR *avsa = NULL;
@@ -138,7 +138,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	printf(_T("\tvideo: %s\n\taudio: %s\n\tout: %s\n"), avsv, (strcmp(avsv, avsa) ? avsa : "(within video source)"), out);
 	printf(_T("\tmute: %d seri: %d bmute: %d emute: %d\n"), setmute, setseri, breakmute, extendmute);
 
-	printf("Loading plugins.\n");
+	//printf("Loading plugins.\n");
 
 	Source *video = NULL;
 	Source *audio = NULL;
@@ -222,7 +222,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	}
 
 	if (fcc != 0x32595559) {
-		printf(_T("warning: only YUY2 is supported. continues...\n"));
+		//printf(_T("warning: only YUY2 is supported. continues...\n"));
 		//return -1;
 	}
 
@@ -255,7 +255,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	if (thin_audio_read <= 0){
 		printf("read audio : serial\n");
 	}
-	printf(_T("--------\nStart searching...\n"));
+	printf(_T("--------\n"));
 
 	short mute = setmute;
 	int seri = 0;

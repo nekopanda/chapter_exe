@@ -76,7 +76,7 @@ public:
 			_in = _in.substr(p+3);
 		}
 
-		printf(" -%s\n", _plugin.c_str());
+		//printf(" -%s\n", _plugin.c_str());
 
 		_dll = LoadLibrary(_plugin.c_str());
 		if (_dll == NULL) {
