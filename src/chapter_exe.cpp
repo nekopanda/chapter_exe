@@ -48,16 +48,19 @@ void write_chapter_debug(FILE *f, int nchap, int frame, TCHAR *title, INPUT_INFO
 	fflush(f);
 }
 
+void print_help() {
+	printf(_T("usage:\n"));
+	printf(_T("\tchapter_exe.exe -v input_avs -o output_txt\n"));
+	printf(_T("params:\n\t-v 入力画像ファイル\n\t-a 入力音声ファイル（省略時は動画と同じファイル）\n\t-m 無音判定閾値（1～2^15)\n\t-s 最低無音フレーム数\n\t-b 無音シーン検索間隔数\n"));
+	printf(_T("\t-e 無音前後検索拡張フレーム数\n"));
+}
+
 int _tmain(int argc, _TCHAR* argv[])
 {
 	// メモリリークチェック
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 
 	//printf(_T("chapter.auf pre loading program.\n"));
-	//printf(_T("usage:\n"));
-	//printf(_T("\tchapter_exe.exe -v input_avs -o output_txt\n"));
-	//printf(_T("params:\n\t-v 入力画像ファイル\n\t-a 入力音声ファイル（省略時は動画と同じファイル）\n\t-m 無音判定閾値（1～2^15)\n\t-s 最低無音フレーム数\n\t-b 無音シーン検索間隔数\n"));
-	//printf(_T("\t-e 無音前後検索拡張フレーム数\n"));
 
 	TCHAR *avsv = NULL;
 	TCHAR *avsa = NULL;
@@ -131,6 +134,7 @@ int _tmain(int argc, _TCHAR* argv[])
 
 	if (out == NULL) {
 		printf("error: no output file path!");
+		print_help();
 		return -1;
 	}
 
