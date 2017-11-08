@@ -140,44 +140,39 @@ int _tmain(int argc, _TCHAR* argv[])
 
 	//printf("Loading plugins.\n");
 
-	Source *video = NULL;
-	Source *audio = NULL;
+	std::shared_ptr<Source> video;
+  std::shared_ptr<Source> audio;
 	try {
-		AuiSource *srcv = new AuiSource();
+		//AuiSource *srcv = new AuiSource();
+    auto srcv = std::shared_ptr<AvsSource>(new AvsSource());
 		srcv->init(avsv);
 		if (srcv->has_video() == false) {
-			srcv->release();
 			throw "Error: No Video Found!";
 		}
 		video = srcv;
 		// 同じソースの場合は同じインスタンスで読み込む
 		if (strcmp(avsv, avsa) == 0 && srcv->has_audio()) {
 			audio = srcv;
-			audio->add_ref();
 		}
 
 		// 音声が別ファイルの時
 		if (audio == NULL) {
 			if (strlen(avsa) > 4 && _stricmp(".wav", avsa + strlen(avsa) - 4) == 0) {
 				// wav
-				WavSource *wav = new WavSource();
+				auto wav = std::unique_ptr<WavSource>(new WavSource());
 				wav->init(avsa);
-				if (wav->has_audio()) {
-					audio = wav;
-					audio->set_rate(video->get_input_info().rate, video->get_input_info().scale);
-				} else {
-					wav->release();
-				}
+        if (wav->has_audio()) {
+          audio = std::move(wav);
+          audio->set_rate(video->get_input_info().rate, video->get_input_info().scale);
+        }
 			} else {
 				// aui
-				AuiSource *aud = new AuiSource();
+				auto aud = std::unique_ptr<AuiSource>(new AuiSource());
 				aud->init(avsa);
-				if (aud->has_audio()) {
-					audio = aud;
-					audio->set_rate(video->get_input_info().rate, video->get_input_info().scale);
-				} else {
-					aud->release();
-				}
+        if (aud->has_audio()) {
+          audio = std::move(aud);
+          audio->set_rate(video->get_input_info().rate, video->get_input_info().scale);
+        }
 			}
 		}
 
@@ -185,9 +180,6 @@ int _tmain(int argc, _TCHAR* argv[])
 			throw "Error: No Audio!";
 		}
 	} catch(char *s) {
-		if (video) {
-			video->release();
-		}
 		printf("%s\n", s);
 		return -1;
 	}
@@ -202,8 +194,6 @@ int _tmain(int argc, _TCHAR* argv[])
 	FILE *fout;
 	if (fopen_s(&fout, out, "w") != 0) {
 		printf("Error: output file open failed.");
-		video->release();
-		audio->release();
 		return -1;
 	}
 
@@ -222,7 +212,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	}
 
 	if (fcc != 0x32595559) {
-		//printf(_T("warning: only YUY2 is supported. continues...\n"));
+		printf(_T("warning: only YUY2 is supported. continues...\n"));
 		//return -1;
 	}
 
@@ -247,7 +237,7 @@ int _tmain(int argc, _TCHAR* argv[])
 				printf("  Error: FAW detected, but no FAWPreview.auf.\n");
 			} else {
 				printf("  FAW detected.\n");
-				audio = new FAWDecoder(audio);
+				audio.reset(new FAWDecoder(audio));
 			}
 		}
 	} while(0);
@@ -307,11 +297,11 @@ int _tmain(int argc, _TCHAR* argv[])
 
 				int w = vii.format->biWidth & 0xFFFFFFF0;
 				int h = vii.format->biHeight & 0xFFFFFFF0;
-				unsigned char *pix0 = (unsigned char*)_aligned_malloc(1920*1088, 32);
-				unsigned char *pix1 = (unsigned char*)_aligned_malloc(1920*1088, 32);
+        unsigned char *pix0 = (unsigned char*)_aligned_malloc(w * h, 32);
+        unsigned char *pix1 = (unsigned char*)_aligned_malloc(w * h, 32);
 
 				//--- 区間内のシーンチェンジを取得 ---
-				proc_scene_change(video, &lastmute_scpos, &lastmute_marker, fout, pix0, pix1, w, h,
+				proc_scene_change(video.get(), &lastmute_scpos, &lastmute_marker, fout, pix0, pix1, w, h,
 									start_fr, seri, setseri, breakmute, extendmute, debug, idx);
 
 
@@ -330,8 +320,10 @@ int _tmain(int argc, _TCHAR* argv[])
 	fprintf(fout, "# SCPos:%d %d\n", n-1, n-1);
 
 	// ソースを解放
-	video->release();
-	audio->release();
+	video = nullptr;
+	audio = nullptr;
+
+  _CrtDumpMemoryLeaks();
 
 	return 0;
 }

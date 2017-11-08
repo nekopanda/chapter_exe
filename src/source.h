@@ -6,9 +6,6 @@
 
 interface Source {
 public:
-	virtual int add_ref() = 0;
-	virtual int release() = 0;
-
 	virtual void init(char *infile) = 0;
 
 	virtual bool has_video() = 0;
@@ -23,15 +20,11 @@ public:
 // 空のソース
 class NullSource : public Source {
 protected:
-	NullSource() : _ref(1) { ZeroMemory(&_ip, sizeof(_ip)); }
+	NullSource() : _ip() { }
 	virtual ~NullSource() { }
 
 	INPUT_INFO _ip;
-	int _ref;
 public:
-
-	int add_ref() { return ++_ref; }
-	int release() { int r = --_ref; if (r <= 0) delete this; return r; }
 
 	bool has_video() { return (_ip.flag & INPUT_INFO_FLAG_VIDEO) != 0; };
 	bool has_audio() { return (_ip.flag & INPUT_INFO_FLAG_AUDIO) != 0; };
@@ -232,4 +225,139 @@ public:
 
 		return fread(buf, _fmt.nBlockAlign, (size_t)(end - start), _f);
 	}
+};
+
+// avisynthにリンクしているので
+#define AVS_LINKAGE_DLLIMPORT
+#include "avisynth.h"
+#pragma comment(lib, "avisynth.lib")
+
+#include <memory>
+#include <vector>
+#include <algorithm>
+
+static void DeleteScriptEnvironment(IScriptEnvironment2* env) {
+  if (env) env->DeleteScriptEnvironment();
+}
+
+typedef std::unique_ptr<IScriptEnvironment2, decltype(&DeleteScriptEnvironment)> ScriptEnvironmentPointer;
+
+static ScriptEnvironmentPointer make_unique_ptr(IScriptEnvironment2* env) {
+  return ScriptEnvironmentPointer(env, DeleteScriptEnvironment);
+}
+
+// AviSynthクリップのソース
+class AvsSource : public NullSource {
+protected:
+  ScriptEnvironmentPointer env_;
+  PClip clip;
+
+  BITMAPINFOHEADER format;
+  WAVEFORMATEX audio_format;
+
+  struct AudioConverter {
+    virtual void operator()(
+      PClip& clip, int64_t start, int64_t count, int nchannel, short* out, IScriptEnvironment* env) = 0;
+  };
+
+  template <typename T> struct AudioConverterT : public AudioConverter {
+    std::vector<T> buf;
+    virtual void operator()(
+      PClip& clip, int64_t start, int64_t count, int nchannel, short* out, IScriptEnvironment* env)
+    {
+      buf.resize(count * nchannel);
+      T* pbuf = buf.data();
+      clip->GetAudio(pbuf, start, count, env);
+      for (int i = 0; i < count * nchannel; ++i) {
+        out[i] = (short)pbuf[i];
+      }
+    }
+  };
+
+  std::unique_ptr<AudioConverter> audconv;
+
+public:
+  AvsSource(void) 
+    : NullSource()
+    , env_(make_unique_ptr(CreateScriptEnvironment2()))
+    , format()
+    , audio_format()
+  { }
+
+  virtual void init(char *infile) {
+    clip = env_->Invoke("Import", infile, 0).AsClip();
+
+    VideoInfo vi = clip->GetVideoInfo();
+
+    // 映像は8bitPlanar以外はダメ
+    if (vi.BitsPerComponent() != 8) {
+      throw "   Only 8bit video is supported";
+    }
+    if (vi.IsPlanar() == false) {
+      throw "   Only planar video format is supported";
+    }
+
+    // 面倒なので使ってるメンバだけ
+    _ip.flag = INPUT_INFO_FLAG_VIDEO_RANDOM_ACCESS | INPUT_INFO_FLAG_VIDEO;
+    if (vi.num_audio_samples > 0) {
+      _ip.flag |= INPUT_INFO_FLAG_AUDIO;
+    }
+    _ip.rate = vi.fps_numerator;
+    _ip.scale = vi.fps_denominator;
+    _ip.n = vi.num_frames;
+    _ip.format = &format;
+    format.biHeight = vi.height;
+    format.biWidth = vi.width;
+    // TODO: 48kHzで12時間を超えるとINT_MAXを越えてしまう
+    _ip.audio_n = (int)vi.num_audio_samples;
+    _ip.audio_format = &audio_format;
+    audio_format.nChannels = vi.AudioChannels();
+    audio_format.nSamplesPerSec = vi.audio_samples_per_second;
+    _ip.handler = '21VY';
+
+    switch (vi.sample_type) {
+    case SAMPLE_INT8:
+      audconv = std::unique_ptr<AudioConverter>(new AudioConverterT<int8_t>());
+      break;
+    case SAMPLE_INT16:
+      audconv = std::unique_ptr<AudioConverter>(new AudioConverterT<int16_t>());
+      break;
+    case SAMPLE_INT32:
+      audconv = std::unique_ptr<AudioConverter>(new AudioConverterT<int32_t>());
+      break;
+    case SAMPLE_FLOAT:
+      audconv = std::unique_ptr<AudioConverter>(new AudioConverterT<float>());
+      break;
+    }
+  }
+
+  bool has_video() {
+    return (_ip.flag & INPUT_INFO_FLAG_VIDEO) != 0;
+  }
+  bool has_audio() {
+    return (_ip.flag & INPUT_INFO_FLAG_AUDIO) != 0;
+  }
+
+  INPUT_INFO &get_input_info() {
+    return _ip;
+  }
+
+  bool read_video_y8(int frame, unsigned char *luma) {
+    PVideoFrame pframe = clip->GetFrame(frame, env_.get());
+    const unsigned char* src = pframe->GetReadPtr(PLANAR_Y);
+    int pitch = pframe->GetPitch(PLANAR_Y);
+
+    int w = _ip.format->biWidth & 0xFFFFFFF0;
+    int h = _ip.format->biHeight & 0xFFFFFFF0;
+    env_->BitBlt(luma, w, src, pitch, w, h);
+
+    return true;
+  }
+
+  int read_audio(int frame, short *buf) {
+    int start = (int)((double)frame * _ip.audio_format->nSamplesPerSec / _ip.rate * _ip.scale);
+    int end = (int)((double)(frame + 1) * _ip.audio_format->nSamplesPerSec / _ip.rate * _ip.scale);
+    (*audconv)(clip, start, end - start, _ip.audio_format->nChannels, buf, env_.get());
+    return end - start;
+  }
 };

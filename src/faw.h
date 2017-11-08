@@ -88,10 +88,10 @@ public:
 // FAWデコードフィルタ
 class FAWDecoder : public NullSource {
 	CFAW _cfaw;
-	Source *_src;
+	std::shared_ptr<Source> _src;
 	WAVEFORMATEX fmt;
 public:
-	FAWDecoder(Source *src) : NullSource(), _src(src){
+	FAWDecoder(std::shared_ptr<Source> src) : NullSource(), _src(src){
 		ZeroMemory(&fmt, sizeof(fmt));
 		fmt.wFormatTag = WAVE_FORMAT_PCM;		
 		fmt.nChannels = 2;
@@ -105,11 +105,6 @@ public:
 		_ip.audio_n = -1;
 
 		_ip.flag = INPUT_INFO_FLAG_AUDIO;
-	}
-
-	int release() {
-		_src->release();
-		return NullSource::release();
 	}
 
 	int read_audio(int frame, short *buf) {
