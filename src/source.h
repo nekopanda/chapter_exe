@@ -63,7 +63,7 @@ public:
 		_in = infile;
 		_plugin = "avsinp.aui";
 
-		int p = _in.find("://");
+		int p = (int)_in.find("://");
 		if (p != _in.npos) {
 			_plugin = _in.substr(0, p);
 			_in = _in.substr(p+3);
@@ -223,7 +223,7 @@ public:
 
 		_fseeki64(_f, _start + start * _fmt.nBlockAlign, SEEK_SET);
 
-		return fread(buf, _fmt.nBlockAlign, (size_t)(end - start), _f);
+		return (int)fread(buf, _fmt.nBlockAlign, (size_t)(end - start), _f);
 	}
 };
 
@@ -255,27 +255,6 @@ protected:
   BITMAPINFOHEADER format;
   WAVEFORMATEX audio_format;
 
-  struct AudioConverter {
-    virtual void operator()(
-      PClip& clip, int64_t start, int64_t count, int nchannel, short* out, IScriptEnvironment* env) = 0;
-  };
-
-  template <typename T> struct AudioConverterT : public AudioConverter {
-    std::vector<T> buf;
-    virtual void operator()(
-      PClip& clip, int64_t start, int64_t count, int nchannel, short* out, IScriptEnvironment* env)
-    {
-      buf.resize(count * nchannel);
-      T* pbuf = buf.data();
-      clip->GetAudio(pbuf, start, count, env);
-      for (int i = 0; i < count * nchannel; ++i) {
-        out[i] = (short)pbuf[i];
-      }
-    }
-  };
-
-  std::unique_ptr<AudioConverter> audconv;
-
 public:
   AvsSource(void) 
     : NullSource()
@@ -289,13 +268,15 @@ public:
 
     VideoInfo vi = clip->GetVideoInfo();
 
-    // 映像は8bitPlanar以外はダメ
-    if (vi.BitsPerComponent() != 8) {
-      throw "   Only 8bit video is supported";
-    }
-    if (vi.IsPlanar() == false) {
-      throw "   Only planar video format is supported";
-    }
+		// サポートしていないフォーマットは変換
+		if (vi.BitsPerComponent() != 8 || vi.IsPlanar() == false) {
+			clip = env_->Invoke("ConvertToY8", clip).AsClip();
+			vi = clip->GetVideoInfo();
+		}
+		if (vi.num_audio_samples > 0 && vi.sample_type != SAMPLE_INT16) {
+			clip = env_->Invoke("ConvertAudioTo16bit", clip).AsClip();
+			vi = clip->GetVideoInfo();
+		}
 
     // 面倒なので使ってるメンバだけ
     _ip.flag = INPUT_INFO_FLAG_VIDEO_RANDOM_ACCESS | INPUT_INFO_FLAG_VIDEO;
@@ -308,27 +289,11 @@ public:
     _ip.format = &format;
     format.biHeight = vi.height;
     format.biWidth = vi.width;
-    // TODO: 48kHzで12時間を超えるとINT_MAXを越えてしまう
-    _ip.audio_n = (int)vi.num_audio_samples;
+    // 48kHzで12時間を超えるとINT_MAXを越えてしまうが表示にしか使っていないのでOK
+    _ip.audio_n = (int)std::min<int64_t>(INT_MAX, vi.num_audio_samples);
     _ip.audio_format = &audio_format;
     audio_format.nChannels = vi.AudioChannels();
     audio_format.nSamplesPerSec = vi.audio_samples_per_second;
-    _ip.handler = '21VY';
-
-    switch (vi.sample_type) {
-    case SAMPLE_INT8:
-      audconv = std::unique_ptr<AudioConverter>(new AudioConverterT<int8_t>());
-      break;
-    case SAMPLE_INT16:
-      audconv = std::unique_ptr<AudioConverter>(new AudioConverterT<int16_t>());
-      break;
-    case SAMPLE_INT32:
-      audconv = std::unique_ptr<AudioConverter>(new AudioConverterT<int32_t>());
-      break;
-    case SAMPLE_FLOAT:
-      audconv = std::unique_ptr<AudioConverter>(new AudioConverterT<float>());
-      break;
-    }
   }
 
   bool has_video() {
@@ -355,9 +320,9 @@ public:
   }
 
   int read_audio(int frame, short *buf) {
-    int start = (int)((double)frame * _ip.audio_format->nSamplesPerSec / _ip.rate * _ip.scale);
-    int end = (int)((double)(frame + 1) * _ip.audio_format->nSamplesPerSec / _ip.rate * _ip.scale);
-    (*audconv)(clip, start, end - start, _ip.audio_format->nChannels, buf, env_.get());
-    return end - start;
+    int64_t start = (int64_t)((double)frame * _ip.audio_format->nSamplesPerSec / _ip.rate * _ip.scale);
+		int64_t end = (int64_t)((double)(frame + 1) * _ip.audio_format->nSamplesPerSec / _ip.rate * _ip.scale);
+		clip->GetAudio(buf, start, end - start, env_.get());
+    return int(end - start);
   }
 };

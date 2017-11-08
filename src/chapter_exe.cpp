@@ -202,19 +202,7 @@ int _tmain(int argc, _TCHAR* argv[])
 
 	printf(_T("Movie data\n"));
 	printf(_T("\tVideo Frames: %d [%.02ffps]\n"), vii.n, (double)vii.rate / vii.scale);
-	DWORD fcc = vii.handler;
-	printf(_T("\tVideo Format: %c%c%c%c\n"), fcc & 0xFF, fcc >> 8 & 0xFF, fcc >> 16 & 0xFF, fcc >> 24);
-
 	printf(_T("\tAudio Samples: %d [%dHz]\n"), aii.audio_n, aii.audio_format->nSamplesPerSec);
-
-	if (fcc == 0x32424752 || fcc == 0x38344359) {
-		printf(_T("Error: Unsupported color RGB/YC48."));
-	}
-
-	if (fcc != 0x32595559) {
-		printf(_T("warning: only YUY2 is supported. continues...\n"));
-		//return -1;
-	}
 
 	short buf[4800*2]; // 10fpsà»è„
 	int n = vii.n;
