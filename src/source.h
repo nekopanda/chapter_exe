@@ -264,36 +264,56 @@ public:
   { }
 
   virtual void init(char *infile) {
-    clip = env_->Invoke("Import", infile, 0).AsClip();
+      try {
+          clip = env_->Invoke("Import", infile, 0).AsClip();
 
-    VideoInfo vi = clip->GetVideoInfo();
+          VideoInfo vi = clip->GetVideoInfo();
 
-		// サポートしていないフォーマットは変換
-		if (vi.BitsPerComponent() != 8 || vi.IsPlanar() == false) {
-			clip = env_->Invoke("ConvertToY8", clip).AsClip();
-			vi = clip->GetVideoInfo();
-		}
-		if (vi.num_audio_samples > 0 && vi.sample_type != SAMPLE_INT16) {
-			clip = env_->Invoke("ConvertAudioTo16bit", clip).AsClip();
-			vi = clip->GetVideoInfo();
-		}
+          // サポートしていないフォーマットは変換
+          if (vi.BitsPerComponent() != 8 || vi.IsPlanar() == false) {
+              clip = env_->Invoke("ConvertToY8", clip).AsClip();
+              vi = clip->GetVideoInfo();
+          }
+          if (vi.num_audio_samples > 0 && vi.sample_type != SAMPLE_INT16) {
+              clip = env_->Invoke("ConvertAudioTo16bit", clip).AsClip();
+              vi = clip->GetVideoInfo();
+          }
 
-    // 面倒なので使ってるメンバだけ
-    _ip.flag = INPUT_INFO_FLAG_VIDEO_RANDOM_ACCESS | INPUT_INFO_FLAG_VIDEO;
-    if (vi.num_audio_samples > 0) {
-      _ip.flag |= INPUT_INFO_FLAG_AUDIO;
-    }
-    _ip.rate = vi.fps_numerator;
-    _ip.scale = vi.fps_denominator;
-    _ip.n = vi.num_frames;
-    _ip.format = &format;
-    format.biHeight = vi.height;
-    format.biWidth = vi.width;
-    // 48kHzで12時間を超えるとINT_MAXを越えてしまうが表示にしか使っていないのでOK
-    _ip.audio_n = (int)std::min<int64_t>(INT_MAX, vi.num_audio_samples);
-    _ip.audio_format = &audio_format;
-    audio_format.nChannels = vi.AudioChannels();
-    audio_format.nSamplesPerSec = vi.audio_samples_per_second;
+          // 面倒なので使ってるメンバだけ
+          _ip.flag = INPUT_INFO_FLAG_VIDEO_RANDOM_ACCESS | INPUT_INFO_FLAG_VIDEO;
+          if (vi.num_audio_samples > 0) {
+              _ip.flag |= INPUT_INFO_FLAG_AUDIO;
+          }
+          _ip.rate = vi.fps_numerator;
+          _ip.scale = vi.fps_denominator;
+          _ip.n = vi.num_frames;
+          _ip.format = &format;
+          format.biHeight = vi.height;
+          format.biWidth = vi.width;
+          // 48kHzで12時間を超えるとINT_MAXを越えてしまうが表示にしか使っていないのでOK
+          _ip.audio_n = (int)std::min<int64_t>(INT_MAX, vi.num_audio_samples);
+          _ip.audio_format = &audio_format;
+          audio_format.nChannels = vi.AudioChannels();
+          audio_format.nSamplesPerSec = vi.audio_samples_per_second;
+      }
+      catch (const AvisynthError& err) {
+          printf("%s\n", err.msg);
+
+          char path[MAX_PATH];
+          HMODULE hm = NULL;
+
+          if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+              GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+              (LPCSTR)&CreateScriptEnvironment2,
+              &hm))
+          {
+              GetModuleFileNameA(hm, path, sizeof(path));
+              printf("Check the Avisynth: %s\n", path);
+              printf("And the script file: %s\n", infile);
+          }
+
+          throw "AvisynthError";
+      }
   }
 
   bool has_video() {
